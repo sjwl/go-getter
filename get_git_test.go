@@ -161,6 +161,50 @@ func TestGitGetter_shallowClone(t *testing.T) {
 		t.Fatalf("expected rev-list count to be '1' but got %v", out)
 	}
 }
+func TestGitGetter_shallowCloneAndTag(t *testing.T) {
+	if !testHasGit {
+		t.Log("git not found, skipping")
+		t.Skip()
+	}
+
+	g := new(GitGetter)
+	dst := tempDir(t)
+
+	repo := testGitRepo(t, "upstream")
+	repo.commitFile("upstream.txt", "0")
+	repo.commitFile("upstream.txt", "1")
+	repo.git("tag", "v1.0")
+
+	// Specifiy a clone depth of 1
+	q := repo.url.Query()
+	q.Add("depth", "1")
+	q.Add("ref", "v1.0")
+	repo.url.RawQuery = q.Encode()
+
+	if err := g.Get(dst, repo.url); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	// Assert rev-list count is '1'
+	cmd := exec.Command("git", "rev-list", "HEAD", "--count")
+	cmd.Dir = dst
+	b, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	out := strings.TrimSpace(string(b))
+	if out != "1" {
+		t.Fatalf("expected rev-list count to be '1' but got %v", out)
+	}
+
+	// Verify the main file exists
+	mainPath := filepath.Join(dst, "upstream.txt")
+	if _, err := os.Stat(mainPath); err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+}
 
 func TestGitGetter_branchUpdate(t *testing.T) {
 	if !testHasGit {

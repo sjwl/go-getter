@@ -114,17 +114,10 @@ func (g *GitGetter) Get(dst string, u *url.URL) error {
 	if err == nil {
 		err = g.update(ctx, dst, sshKeyFile, ref, depth)
 	} else {
-		err = g.clone(ctx, dst, sshKeyFile, u, depth)
+		err = g.clone(ctx, dst, sshKeyFile, u, ref, depth)
 	}
 	if err != nil {
 		return err
-	}
-
-	// Next: check out the proper tag/branch if it is specified, and checkout
-	if ref != "" {
-		if err := g.checkout(dst, ref); err != nil {
-			return err
-		}
 	}
 
 	// Lastly, download any/all submodules.
@@ -166,17 +159,47 @@ func (g *GitGetter) checkout(dst string, ref string) error {
 	return getRunCommand(cmd)
 }
 
-func (g *GitGetter) clone(ctx context.Context, dst, sshKeyFile string, u *url.URL, depth int) error {
-	args := []string{"clone"}
-
-	if depth > 0 {
-		args = append(args, "--depth", strconv.Itoa(depth))
+func (g *GitGetter) clone(ctx context.Context, dst, sshKeyFile string, u *url.URL, ref string, depth int) error {
+	var cmd *exec.Cmd
+	if depth > 0 && ref != "" {
+		// If we're going into a directory we should make that first
+		if err := os.MkdirAll(dst, 0755); err != nil {
+			return err
+		}
+		cmd = exec.CommandContext(ctx, "git", "init")
+		cmd.Dir = dst
+		if err := getRunCommand(cmd); err != nil {
+			return err
+		}
+		args := []string{"pull"}
+		args = append(args, "--depth", strconv.Itoa(depth), "--tags", u.String(), ref)
+		cmd = exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = dst
+		setupGitEnv(cmd, sshKeyFile)
+		if err := getRunCommand(cmd); err != nil {
+			return err
+		}
+	} else {
+		args := []string{"clone"}
+		if depth > 0 {
+			args = append(args, "--depth", strconv.Itoa(depth))
+		}
+		args = append(args, u.String(), dst)
+		cmd = exec.CommandContext(ctx, "git", args...)
+		setupGitEnv(cmd, sshKeyFile)
+		if err := getRunCommand(cmd); err != nil {
+			return err
+		}
+		if ref != "" {
+			// check out the proper tag/branch if it is specified, and checkout
+			if ref != "" {
+				if err := g.checkout(dst, ref); err != nil {
+					return err
+				}
+			}
+		}
 	}
-
-	args = append(args, u.String(), dst)
-	cmd := exec.CommandContext(ctx, "git", args...)
-	setupGitEnv(cmd, sshKeyFile)
-	return getRunCommand(cmd)
+	return nil
 }
 
 func (g *GitGetter) update(ctx context.Context, dst, sshKeyFile, ref string, depth int) error {
