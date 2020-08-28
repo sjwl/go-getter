@@ -129,14 +129,15 @@ func getRunCommand(cmd *exec.Cmd) error {
 		// The program has exited with an exit code != 0
 		if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
 			return fmt.Errorf(
-				"%s exited with %d: %s",
+				"%s %+q exited with %d: %s",
 				cmd.Path,
+				cmd.Args,
 				status.ExitStatus(),
 				buf.String())
 		}
 	}
 
-	return fmt.Errorf("error running %s: %v %s", cmd.Path, err, buf.String())
+	return fmt.Errorf("error running %s %+q: %v %s", cmd.Path, cmd.Args, err, buf.String())
 }
 
 // getForcedGetter takes a source and returns the tuple of the forced
