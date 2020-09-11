@@ -159,9 +159,15 @@ func (g *GitGetter) checkout(dst string, ref string) error {
 	return getRunCommand(cmd)
 }
 
+var sha1Regex = regexp.MustCompile("^[a-f0-9]{40}$")
+
+func isSHA1(hash string) bool {
+	return sha1Regex.MatchString(hash)
+}
+
 func (g *GitGetter) clone(ctx context.Context, dst, sshKeyFile string, u *url.URL, ref string, depth int) error {
 	var cmd *exec.Cmd
-	if depth > 0 && ref != "" {
+	if depth > 0 && ref != "" && !isSHA1(ref) {
 		// If we're going into a directory we should make that first
 		if err := os.MkdirAll(dst, 0755); err != nil {
 			return err
@@ -181,8 +187,11 @@ func (g *GitGetter) clone(ctx context.Context, dst, sshKeyFile string, u *url.UR
 		}
 	} else {
 		args := []string{"clone"}
-		if depth > 0 {
+		if depth > 0 && !isSHA1(ref) {
 			args = append(args, "--depth", strconv.Itoa(depth))
+		}
+		if ref != "" && !isSHA1(ref) {
+			args = append(args, "-b", ref)
 		}
 		args = append(args, u.String(), dst)
 		cmd = exec.CommandContext(ctx, "git", args...)
@@ -190,12 +199,10 @@ func (g *GitGetter) clone(ctx context.Context, dst, sshKeyFile string, u *url.UR
 		if err := getRunCommand(cmd); err != nil {
 			return err
 		}
-		if ref != "" {
-			// check out the proper tag/branch if it is specified, and checkout
-			if ref != "" {
-				if err := g.checkout(dst, ref); err != nil {
-					return err
-				}
+		if isSHA1((ref)) {
+			// check out the commit if it is specified
+			if err := g.checkout(dst, ref); err != nil {
+				return err
 			}
 		}
 	}
